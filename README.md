@@ -51,3 +51,18 @@ A title counts as exclusive when TMDB lists no other streaming service for it in
 - Run locally: `TMDB_API_KEY=... MDBLIST_API_KEY=... node build.mjs`, output lands in `dist/`.
 
 Uses the TMDB API but is not endorsed or certified by TMDB. Streaming availability sourced through TMDB/JustWatch. Ratings by MDBList, with TMDB fallback.
+
+## Provider verification in v1.1.1
+
+The standalone **Latest** and **Top Rated** catalogs now confirm each title against
+`/tv/{id}/watch/providers` for the configured US region. A title only appears in a
+platform's derived catalog when the platform's provider ID is found in its
+**flatrate** (subscription-included) list; rental, purchase, and free/ads-only
+listings do not qualify. The verification cache stores `f` (flatrate IDs) alongside
+the existing `p` provider IDs. Older `data/state.json` caches are automatically
+refreshed for currently discovered titles without deleting historical membership.
+
+GitHub Actions logs include verified candidate counts for each platform and pairwise
+Top Rated overlaps. Titles available through multiple subscriptions can still
+legitimately appear in multiple catalogs. This change does not rewrite permanent
+historical `all`/`originals` catalog membership.

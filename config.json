@@ -1,7 +1,7 @@
 {
   "addon": {
     "id": "community.anime-streamers",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "name": "Anime on Streamers",
     "description": "Anime streaming on Netflix, Prime Video and Disney+/Hulu, including latest releases, top rated shows and originals."
   },

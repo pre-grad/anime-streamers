@@ -226,6 +226,10 @@ for (const svc of cfg.services) {
 
 // 1b. Exclusives: anime whose only streaming home in this region is this service.
 // Verdicts are cached in state so later builds only look up what is new or stale.
+// IMPORTANT: TMDB's discover with_watch_providers and monetization filters can match
+// independently. A show rentable on one service and included with a subscription on
+// another can otherwise slip into the wrong catalog. Verify *each provider* against
+// the show's actual US flatrate watch/providers entries.
 state.providers ||= {};
 const ttlCut = new Date(Date.now() - (cfg.providerTtlDays ?? 21) * 864e5).toISOString().slice(0, 10);
 const familyOf = (svc) => new Set(svc.exclusiveProviders || svc.providers);
@@ -235,6 +239,14 @@ for (const svc of cfg.services)
   for (const id of Object.keys(state.lists[`${svc.id}-originals`] || {})) settled.add(`${svc.id}:${id}`);
 
 const toCheck = new Set();
+// Prioritize all candidates for Latest / Top Rated so the verified catalogs are
+// complete even if this build reaches its provider-lookup budget.
+for (const ids of liveStreaming.values()) {
+  for (const id of ids) {
+    const cached = state.providers[id];
+    if (!cached || !Array.isArray(cached.f) || cached.d < ttlCut) toCheck.add(id);
+  }
+}
 for (const svc of cfg.services) {
   const own = new Set(lists[`${svc.id}-originals`]);
   for (const id of lists[`${svc.id}-all`]) {
@@ -248,8 +260,10 @@ for (let i = 0; i < budget.length; i += 10) {
     budget.slice(i, i + 10).map(async (id) => {
       try {
         const reg = (await tmdb(`/tv/${id}/watch/providers`)).results?.[REGION] || {};
+        const flatrate = [...new Set((reg.flatrate || []).map((x) => x.provider_id))].sort((a, b) => a - b);
         const ids = [...(reg.flatrate || []), ...(reg.ads || []), ...(reg.free || [])].map((x) => x.provider_id);
-        state.providers[id] = { d: TODAY, p: [...new Set(ids)].sort((a, b) => a - b) };
+        // p retains the existing exclusivity logic; f means subscription-included only.
+        state.providers[id] = { d: TODAY, p: [...new Set(ids)].sort((a, b) => a - b), f: flatrate };
       } catch (e) {
         console.warn(`watch/providers ${id}: ${e.message}`);
       }
@@ -313,7 +327,18 @@ console.log(`State: ${addedNow} new entries today, ${retained.length} retained s
 // Derived catalogs deliberately DO NOT enter permanent state. They represent the
 // latest snapshot of US subscription streaming availability, not historical membership.
 for (const svc of cfg.services) {
-  const active = liveStreaming.get(svc.id).filter((id) => shows.has(id));
+  const candidates = liveStreaming.get(svc.id).filter((id) => shows.has(id));
+  const active = candidates.filter((id) => {
+    const subscriptionProviders = state.providers[id]?.f;
+    return Array.isArray(subscriptionProviders) &&
+      svc.providers.some((provider) => subscriptionProviders.includes(provider));
+  });
+  const unchecked = candidates.filter((id) => !Array.isArray(state.providers[id]?.f));
+  console.log(`${svc.name}: ${active.length}/${candidates.length} TMDB discover candidates verified as US subscription streams`);
+  if (unchecked.length) console.warn(`${svc.name}: ${unchecked.length} unverified candidate(s) excluded from Latest / Top Rated`);
+  if (candidates.length && !active.length && unchecked.length === candidates.length) {
+    throw new Error(`No ${svc.name} candidates have verified providers; refusing to publish incomplete catalogs`);
+  }
   lists[`${svc.id}-latest`] = active.filter((id) => {
     const date = shows.get(id).first_air_date || '';
     return date && date <= TODAY; // no undated or future-premiere titles
@@ -321,6 +346,16 @@ for (const svc of cfg.services) {
   lists[`${svc.id}-top-rated`] = active.filter((id) =>
     (shows.get(id).vote_count || 0) >= (cfg.topRatedMinVotes ?? 25)
   );
+}
+// Surface legitimate overlap between services without removing shared licenses.
+for (let i = 0; i < cfg.services.length; i++) {
+  for (let j = i + 1; j < cfg.services.length; j++) {
+    const first = cfg.services[i], second = cfg.services[j];
+    const a = new Set(lists[`${first.id}-top-rated`]);
+    const b = new Set(lists[`${second.id}-top-rated`]);
+    const shared = [...a].filter((id) => b.has(id)).length;
+    console.log(`Top Rated overlap ${first.name} / ${second.name}: ${shared} shared (${a.size} / ${b.size} titles)`);
+  }
 }
 
 
