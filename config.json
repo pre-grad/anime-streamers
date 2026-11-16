@@ -1,9 +1,9 @@
 {
   "addon": {
     "id": "community.anime-streamers",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "name": "Anime on Streamers",
-    "description": "Anime series streaming on and produced by Netflix, Prime Video and Disney+/Hulu."
+    "description": "Anime streaming on Netflix, Prime Video and Disney+/Hulu, including latest releases, top rated shows and originals."
   },
   "region": "US",
   "language": "en-US",
@@ -17,8 +17,53 @@
   "providerTtlDays": 21,
   "maxProviderLookups": 1500,
   "services": [
-    { "id": "netflix", "name": "Netflix", "networks": [213], "providers": [8], "exclusiveProviders": [8, 175, 1796] },
-    { "id": "prime", "name": "Prime Video", "networks": [1024], "providers": [9], "exclusiveProviders": [9, 119, 2100] },
-    { "id": "disney-hulu", "name": "Disney+ / Hulu", "networks": [2739, 453], "providers": [337, 15], "exclusiveProviders": [337, 15, 1771] }
-  ]
+    {
+      "id": "netflix",
+      "name": "Netflix",
+      "networks": [
+        213
+      ],
+      "providers": [
+        8
+      ],
+      "exclusiveProviders": [
+        8,
+        175,
+        1796
+      ]
+    },
+    {
+      "id": "prime",
+      "name": "Prime Video",
+      "networks": [
+        1024
+      ],
+      "providers": [
+        9
+      ],
+      "exclusiveProviders": [
+        9,
+        119,
+        2100
+      ]
+    },
+    {
+      "id": "disney-hulu",
+      "name": "Disney+ / Hulu",
+      "networks": [
+        2739,
+        453
+      ],
+      "providers": [
+        337,
+        15
+      ],
+      "exclusiveProviders": [
+        337,
+        15,
+        1771
+      ]
+    }
+  ],
+  "topRatedMinVotes": 25
 }

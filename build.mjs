@@ -202,6 +202,7 @@ try {
 // 1. Collect shows per service
 const shows = new Map(); // tmdb id -> show
 const lists = {}; // catalog id -> [tmdb ids]
+const liveStreaming = new Map(); // provider-backed, current US streaming availability only
 
 function remember(results) {
   const ids = [];
@@ -216,6 +217,7 @@ function remember(results) {
 for (const svc of cfg.services) {
   const originals = remember(await originalsOf(svc));
   const streaming = remember(await streamingOf(svc));
+  liveStreaming.set(svc.id, streaming);
   lists[`${svc.id}-originals`] = originals;
   // "On <service>" = everything streaming there plus its originals (JustWatch data sometimes misses them)
   lists[`${svc.id}-all`] = [...new Set([...streaming, ...originals])];
@@ -308,6 +310,20 @@ for (let i = 0; i < retained.length; i += 10) {
 for (const id of Object.keys(lists)) lists[id] = lists[id].filter((x) => shows.has(x));
 console.log(`State: ${addedNow} new entries today, ${retained.length} retained shows no longer in live results`);
 
+// Derived catalogs deliberately DO NOT enter permanent state. They represent the
+// latest snapshot of US subscription streaming availability, not historical membership.
+for (const svc of cfg.services) {
+  const active = liveStreaming.get(svc.id).filter((id) => shows.has(id));
+  lists[`${svc.id}-latest`] = active.filter((id) => {
+    const date = shows.get(id).first_air_date || '';
+    return date && date <= TODAY; // no undated or future-premiere titles
+  });
+  lists[`${svc.id}-top-rated`] = active.filter((id) =>
+    (shows.get(id).vote_count || 0) >= (cfg.topRatedMinVotes ?? 25)
+  );
+}
+
+
 // 2. Enrich
 const allIds = [...shows.keys()];
 const mdb = await mdbEnrich(allIds);
@@ -372,9 +388,10 @@ const byAir = (a, b) => (shows.get(b).first_air_date || '').localeCompare(shows.
 // Default order: most recently added to the service first, then newest air date
 const recentlyAdded = (catalogId) => (ids) =>
   [...ids].sort((a, b) => addedOn(catalogId, b).localeCompare(addedOn(catalogId, a)) || byAir(a, b));
+const byScore = (a, b) => score(b) - score(a) || byAir(a, b);
 const SORTS = {
   Popular: (ids) => ids, // TMDB popularity order
-  Top: (ids) => [...ids].sort((a, b) => score(b) - score(a)),
+  Top: (ids) => [...ids].sort(byScore),
   New: (ids) => [...ids].sort(byAir),
 };
 
@@ -387,20 +404,30 @@ const write = async (rel, obj) => {
 
 const catalogs = [];
 for (const svc of cfg.services) {
-  for (const [suffix, label] of [
-    ['all', `Anime on ${svc.name}`],
-    ['originals', `${svc.name} Originals & Exclusives`],
+  // Extra rows appear individually in Nuvio's "Add catalog source" selector.
+  // Existing rows keep their per-catalog Popular / Top / New sorting controls.
+  for (const [suffix, label, defaultSorter, offerSortFilters] of [
+    ['all', `Anime on ${svc.name}`, recentlyAdded(`${svc.id}-all`), true],
+    ['originals', `${svc.name} Originals & Exclusives`, recentlyAdded(`${svc.id}-originals`), true],
+    ['latest', `Latest ${svc.name} Anime`, (ids) => [...ids].sort(byAir), false],
+    ['top-rated', `Top Rated ${svc.name} Anime`, (ids) => [...ids].sort(byScore), false],
   ]) {
     const id = `${svc.id}-${suffix}`;
-    const ids = lists[id].sort((a, b) => shows.get(b).popularity - shows.get(a).popularity);
-    if (!ids.length) continue;
+    const ids = [...lists[id]].sort((a, b) => (shows.get(b).popularity || 0) - (shows.get(a).popularity || 0));
+    if (!ids.length) {
+      console.log(`Skipping empty catalog ${label}`);
+      continue;
+    }
     catalogs.push({
       type: 'series',
       id,
       name: label,
-      extra: [{ name: 'genre', options: Object.keys(SORTS), isRequired: false }, { name: 'skip' }],
+      extra: [
+        ...(offerSortFilters ? [{ name: 'genre', options: Object.keys(SORTS), isRequired: false }] : []),
+        { name: 'skip' },
+      ],
     });
-    for (const [sortName, sorter] of [['', recentlyAdded(id)], ...Object.entries(SORTS)]) {
+    for (const [sortName, sorter] of [['', defaultSorter], ...(offerSortFilters ? Object.entries(SORTS) : [])]) {
       const metas = sorter(ids).map(toMeta);
       const pages = Math.max(1, Math.ceil(metas.length / PAGE));
       for (let p = 0; p <= pages; p++) {
