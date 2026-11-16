@@ -23,7 +23,7 @@ const clean = (v) => {
 const TMDB_KEY = clean(process.env.TMDB_API_KEY);
 const MDB_KEY = clean(process.env.MDBLIST_API_KEY);
 const mask = (k) => `${k.length} chars, "${k.slice(0, 4)}…${k.slice(-2)}"`;
-const REGION = (process.env.WATCH_REGION || cfg.region || 'US').trim().toUpperCase();
+const REGION = 'US'; // US only: Hulu has no data elsewhere and anime rights differ by country
 const OUT = path.resolve(process.env.OUT_DIR || 'dist');
 const PAGE = 100; // items per catalog page
 const STATE_FILE = path.resolve(process.env.STATE_FILE || 'data/state.json');

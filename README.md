@@ -4,14 +4,16 @@ A static Stremio-format catalog addon for Nuvio. A GitHub Action rebuilds it dai
 
 ## Rows
 
+Everything is US availability: `region` is fixed to `US` in `config.json`, since Hulu exists nowhere else and anime streaming rights differ by country.
+
 | Row | What is in it |
 | --- | --- |
-| Anime on Netflix | Anime streaming on Netflix in your region, plus Netflix originals |
-| Netflix Originals & Exclusives | Netflix originals, plus anime that streams nowhere else in your region |
+| Anime on Netflix | Anime streaming on Netflix in the US, plus Netflix originals |
+| Netflix Originals & Exclusives | Netflix originals, plus anime that streams nowhere else in the US |
 | Anime on Prime Video / Prime Video Originals & Exclusives | Same, for Amazon |
 | Anime on Disney+ / Hulu / Disney+ / Hulu Originals & Exclusives | Same, for Disney+ and Hulu combined |
 
-A title counts as exclusive when TMDB lists no other streaming service for it in your region: subscription, ad-supported and free tiers all count against exclusivity, while rent and buy listings do not. Those verdicts are cached in `data/state.json` and rechecked every `providerTtlDays`; at most `maxProviderLookups` titles are checked per build, with the rest rolling into the next day's run. `exclusiveProviders` per service lists the provider ids that still count as "the same service" (Netflix Kids, Prime with Ads, and so on) — the current ids at `https://api.themoviedb.org/3/watch/providers/tv?watch_region=US&api_key=YOURKEY`.
+A title counts as exclusive when TMDB lists no other streaming service for it in the US: subscription, ad-supported and free tiers all count against exclusivity, while rent and buy listings do not. Those verdicts are cached in `data/state.json` and rechecked every `providerTtlDays`; at most `maxProviderLookups` titles are checked per build, with the rest rolling into the next day's run. `exclusiveProviders` per service lists the provider ids that still count as "the same service" (Netflix Kids, Prime with Ads, and so on) — the current ids at `https://api.themoviedb.org/3/watch/providers/tv?watch_region=US&api_key=YOURKEY`.
 
 Rows open with the most recently added shows first. Each row also has a Popular / Top / New filter: Popular is TMDB popularity, Top is the MDBList score, New is first air date.
 
@@ -27,10 +29,9 @@ Rows open with the most recently added shows first. Each row also has a Popular 
 2. Settings → Secrets and variables → Actions → New repository secret:
    - `TMDB_API_KEY` (the short v3 key or the long Read Access Token, either works)
    - `MDBLIST_API_KEY`
-3. Optional: on the Variables tab add `WATCH_REGION` (default `US`). Hulu only has data for `US`.
-4. Settings → Pages → Source: **GitHub Actions**.
-5. Actions → Build addon → Run workflow.
-6. Add `https://<user>.github.io/<repo>/manifest.json` in Nuvio.
+3. Settings → Pages → Source: **GitHub Actions**.
+4. Actions → Build addon → Run workflow.
+5. Add `https://<user>.github.io/<repo>/manifest.json` in Nuvio.
 
 ## Notes
 
