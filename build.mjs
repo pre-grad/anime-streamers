@@ -7,8 +7,22 @@ import path from 'node:path';
 
 const cfg = JSON.parse(await readFile(new URL('./config.json', import.meta.url), 'utf8'));
 
-const TMDB_KEY = (process.env.TMDB_API_KEY || '').trim();
-const MDB_KEY = (process.env.MDBLIST_API_KEY || '').trim();
+// Tolerate a key pasted with quotes, a "Bearer " prefix or stray whitespace.
+const clean = (v) => {
+  let k = (v || '').trim();
+  for (let i = 0; i < 4; i++) {
+    const before = k;
+    k = k
+      .replace(/^["'`]|["'`]$/g, '')
+      .replace(/^Bearer\s+/i, '')
+      .trim();
+    if (k === before) break;
+  }
+  return k;
+};
+const TMDB_KEY = clean(process.env.TMDB_API_KEY);
+const MDB_KEY = clean(process.env.MDBLIST_API_KEY);
+const mask = (k) => `${k.length} chars, "${k.slice(0, 4)}…${k.slice(-2)}"`;
 const REGION = (process.env.WATCH_REGION || cfg.region || 'US').trim().toUpperCase();
 const OUT = path.resolve(process.env.OUT_DIR || 'dist');
 const PAGE = 100; // items per catalog page
@@ -44,7 +58,7 @@ async function getJson(url, init = {}, tries = 4) {
     const retryable = res.status === 429 || res.status >= 500;
     if (!retryable || i >= tries) {
       const body = (await res.text().catch(() => '')).slice(0, 200);
-      const err = new Error(`HTTP ${res.status} ${new URL(url).pathname} ${body}`);
+      const err = new Error(`HTTP ${res.status} ${new URL(res.url || url).pathname} ${body}`);
       err.status = res.status;
       throw err;
     }
@@ -54,14 +68,41 @@ async function getJson(url, init = {}, tries = 4) {
 
 // ---------- TMDB ----------
 
-// Accepts either the short v3 key or the long v4 "API Read Access Token".
-const tmdbIsToken = TMDB_KEY.startsWith('eyJ');
+// TMDB takes either the short v3 key (api_key query param) or the long v4
+// "API Read Access Token" (bearer header). Which one this is gets settled by
+// trying both against /configuration, not by guessing from its shape.
+let tmdbAuth = null;
 
-function tmdb(pathname, params = {}) {
+function tmdbCall(pathname, params, mode) {
   const u = new URL(`https://api.themoviedb.org/3${pathname}`);
   for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== '') u.searchParams.set(k, v);
-  if (!tmdbIsToken) u.searchParams.set('api_key', TMDB_KEY);
-  return getJson(u, tmdbIsToken ? { headers: { Authorization: `Bearer ${TMDB_KEY}` } } : {});
+  if (mode === 'query') u.searchParams.set('api_key', TMDB_KEY);
+  const init = mode === 'bearer' ? { headers: { Authorization: `Bearer ${TMDB_KEY}` } } : {};
+  return getJson(u, init);
+}
+
+function tmdb(pathname, params = {}) {
+  return tmdbCall(pathname, params, tmdbAuth);
+}
+
+async function resolveTmdbAuth() {
+  const order = TMDB_KEY.startsWith('eyJ') ? ['bearer', 'query'] : ['query', 'bearer'];
+  const failures = [];
+  for (const mode of order) {
+    try {
+      await tmdbCall('/configuration', {}, mode);
+      tmdbAuth = mode;
+      console.log(`TMDB key accepted as ${mode === 'bearer' ? 'a v4 read access token' : 'a v3 API key'}`);
+      return;
+    } catch (e) {
+      failures.push(`as ${mode} -> ${e.message}`);
+    }
+  }
+  throw new Error(
+    `TMDB rejected this key both ways (${mask(TMDB_KEY)}).\n  ${failures.join('\n  ')}\n` +
+      '  Check the TMDB_API_KEY secret: it should be either the 32-character v3 "API Key" ' +
+      'or the long "API Read Access Token", pasted on its own with no quotes or "Bearer " prefix.',
+  );
 }
 
 async function discover(extra) {
@@ -143,8 +184,20 @@ function mdbRatings(it) {
 
 // ---------- build ----------
 
-const genreNames = new Map();
-for (const g of (await tmdb('/genre/tv/list', { language: cfg.language })).genres || []) genreNames.set(g.id, g.name);
+await resolveTmdbAuth();
+
+// TMDB's TV genre vocabulary, used for meta.genres. Refreshed live when reachable.
+const genreNames = new Map([
+  [10759, 'Action & Adventure'], [16, 'Animation'], [35, 'Comedy'], [80, 'Crime'],
+  [99, 'Documentary'], [18, 'Drama'], [10751, 'Family'], [10762, 'Kids'],
+  [9648, 'Mystery'], [10763, 'News'], [10764, 'Reality'], [10765, 'Sci-Fi & Fantasy'],
+  [10766, 'Soap'], [10767, 'Talk'], [10768, 'War & Politics'], [37, 'Western'],
+]);
+try {
+  for (const g of (await tmdb('/genre/tv/list', { language: cfg.language })).genres || []) genreNames.set(g.id, g.name);
+} catch (e) {
+  console.warn(`Genre list unavailable, using built-in names: ${e.message}`);
+}
 
 // 1. Collect shows per service
 const shows = new Map(); // tmdb id -> show
