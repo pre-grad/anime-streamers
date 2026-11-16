@@ -14,9 +14,11 @@
   "minVotes": 0,
   "maxPagesPerQuery": 50,
   "mdblistBatchSize": 100,
+  "providerTtlDays": 21,
+  "maxProviderLookups": 1500,
   "services": [
-    { "id": "netflix", "name": "Netflix", "networks": [213], "providers": [8] },
-    { "id": "prime", "name": "Prime Video", "networks": [1024], "providers": [9] },
-    { "id": "disney-hulu", "name": "Disney+ / Hulu", "networks": [2739, 453], "providers": [337, 15] }
+    { "id": "netflix", "name": "Netflix", "networks": [213], "providers": [8], "exclusiveProviders": [8, 175, 1796] },
+    { "id": "prime", "name": "Prime Video", "networks": [1024], "providers": [9], "exclusiveProviders": [9, 119, 2100] },
+    { "id": "disney-hulu", "name": "Disney+ / Hulu", "networks": [2739, 453], "providers": [337, 15], "exclusiveProviders": [337, 15, 1771] }
   ]
 }

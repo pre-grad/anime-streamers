@@ -222,7 +222,59 @@ for (const svc of cfg.services) {
   console.log(`${svc.name}: ${originals.length} originals, ${lists[`${svc.id}-all`].length} total`);
 }
 
-// 1b. Merge with permanent state: add new shows, never drop old ones
+// 1b. Exclusives: anime whose only streaming home in this region is this service.
+// Verdicts are cached in state so later builds only look up what is new or stale.
+state.providers ||= {};
+const ttlCut = new Date(Date.now() - (cfg.providerTtlDays ?? 21) * 864e5).toISOString().slice(0, 10);
+const familyOf = (svc) => new Set(svc.exclusiveProviders || svc.providers);
+
+const settled = new Set(); // already permanent in an originals row: never needs re-checking
+for (const svc of cfg.services)
+  for (const id of Object.keys(state.lists[`${svc.id}-originals`] || {})) settled.add(`${svc.id}:${id}`);
+
+const toCheck = new Set();
+for (const svc of cfg.services) {
+  const own = new Set(lists[`${svc.id}-originals`]);
+  for (const id of lists[`${svc.id}-all`]) {
+    if (own.has(id) || settled.has(`${svc.id}:${id}`)) continue;
+    if (!state.providers[id] || state.providers[id].d < ttlCut) toCheck.add(id);
+  }
+}
+const budget = [...toCheck].slice(0, cfg.maxProviderLookups ?? 1500);
+for (let i = 0; i < budget.length; i += 10) {
+  await Promise.all(
+    budget.slice(i, i + 10).map(async (id) => {
+      try {
+        const reg = (await tmdb(`/tv/${id}/watch/providers`)).results?.[REGION] || {};
+        const ids = [...(reg.flatrate || []), ...(reg.ads || []), ...(reg.free || [])].map((x) => x.provider_id);
+        state.providers[id] = { d: TODAY, p: [...new Set(ids)].sort((a, b) => a - b) };
+      } catch (e) {
+        console.warn(`watch/providers ${id}: ${e.message}`);
+      }
+    }),
+  );
+}
+if (toCheck.size > budget.length)
+  console.log(`Provider lookups: ${budget.length} done, ${toCheck.size - budget.length} queued for the next build`);
+
+let exclusiveCount = 0;
+for (const svc of cfg.services) {
+  const fam = familyOf(svc);
+  const row = lists[`${svc.id}-originals`];
+  const own = new Set(row);
+  for (const id of lists[`${svc.id}-all`]) {
+    if (own.has(id)) continue;
+    const seen = state.providers[id]?.p;
+    if (seen?.length && seen.every((x) => fam.has(x))) {
+      row.push(id);
+      own.add(id);
+      exclusiveCount++;
+    }
+  }
+}
+console.log(`Exclusives added to originals rows: ${exclusiveCount} (${budget.length} provider lookups)`);
+
+// 1c. Merge with permanent state: add new shows, never drop old ones
 let addedNow = 0;
 for (const [id, current] of Object.entries(lists)) {
   const known = (state.lists[id] ||= {});
@@ -337,7 +389,7 @@ const catalogs = [];
 for (const svc of cfg.services) {
   for (const [suffix, label] of [
     ['all', `Anime on ${svc.name}`],
-    ['originals', `${svc.name} Original Anime`],
+    ['originals', `${svc.name} Originals & Exclusives`],
   ]) {
     const id = `${svc.id}-${suffix}`;
     const ids = lists[id].sort((a, b) => shows.get(b).popularity - shows.get(a).popularity);
@@ -396,6 +448,10 @@ for (const k of Object.keys(state.lists).sort()) {
   sorted[k] = Object.fromEntries(Object.entries(state.lists[k]).sort((a, b) => a[0] - b[0]));
 }
 await mkdir(path.dirname(STATE_FILE), { recursive: true });
-await writeFile(STATE_FILE, JSON.stringify({ heartbeat: TODAY.slice(0, 7), lists: sorted }, null, 1) + '\n');
+const providers = Object.fromEntries(Object.entries(state.providers).sort((a, b) => a[0] - b[0]));
+await writeFile(
+  STATE_FILE,
+  JSON.stringify({ heartbeat: TODAY.slice(0, 7), lists: sorted, providers }, null, 1) + '\n',
+);
 
 console.log(`Done: ${shows.size} shows, ${catalogs.length} catalogs -> ${OUT}`);

@@ -7,9 +7,11 @@ A static Stremio-format catalog addon for Nuvio. A GitHub Action rebuilds it dai
 | Row | What is in it |
 | --- | --- |
 | Anime on Netflix | Anime streaming on Netflix in your region, plus Netflix originals |
-| Netflix Original Anime | Anime whose network on TMDB is Netflix |
-| Anime on Prime Video / Prime Video Original Anime | Same, for Amazon |
-| Anime on Disney+ / Hulu / Disney+ / Hulu Original Anime | Same, for Disney+ and Hulu combined |
+| Netflix Originals & Exclusives | Netflix originals, plus anime that streams nowhere else in your region |
+| Anime on Prime Video / Prime Video Originals & Exclusives | Same, for Amazon |
+| Anime on Disney+ / Hulu / Disney+ / Hulu Originals & Exclusives | Same, for Disney+ and Hulu combined |
+
+A title counts as exclusive when TMDB lists no other streaming service for it in your region: subscription, ad-supported and free tiers all count against exclusivity, while rent and buy listings do not. Those verdicts are cached in `data/state.json` and rechecked every `providerTtlDays`; at most `maxProviderLookups` titles are checked per build, with the rest rolling into the next day's run. `exclusiveProviders` per service lists the provider ids that still count as "the same service" (Netflix Kids, Prime with Ads, and so on) — the current ids at `https://api.themoviedb.org/3/watch/providers/tv?watch_region=US&api_key=YOURKEY`.
 
 Rows open with the most recently added shows first. Each row also has a Popular / Top / New filter: Popular is TMDB popularity, Top is the MDBList score, New is first air date.
 
